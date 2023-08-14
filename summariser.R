@@ -10,7 +10,7 @@ pacman::p_load(tidyverse, gmodels)
 
 
 #function to summarise data
-summariser <- \(data, group_cols = NULL, digits = 2, incl_ci = T,
+summariser <- \(data, group_cols = NULL, digits = 2, incl_ci = T, confidence = 0.95, na_rm = T, 
   incl_se = T,
   incl_min = T,
   incl_max = T,
@@ -21,16 +21,17 @@ summariser <- \(data, group_cols = NULL, digits = 2, incl_ci = T,
 {
   
   stats <- list(
-    mean = ~ mean(.x, na.rm = TRUE),
-    median = ~ median(.x, na.rm = TRUE),
-    sd = ~ sd(.x, na.rm = TRUE),
-    min = ~ min(.x, na.rm = TRUE),
-    max = ~ max(.x, na.rm = TRUE),
-    se = ~ gmodels::ci(.x)[4],
-    lowci = ~ gmodels::ci(.x)[2],
-    hici = ~ gmodels::ci(.x)[3],
-    n = ~ n(),
-    n_na = ~ sum(is.na(.x))
+    mean = ~ mean(.x, na.rm = na_rm),
+    median = ~ median(.x, na.rm = na_rm),
+    sd = ~ sd(.x, na.rm = na_rm),
+    min = ~ min(.x, na.rm = na_rm),
+    max = ~ max(.x, na.rm = na_rm),
+    se = ~ gmodels::ci(.x, confidence = confidence, na.rm = na_rm)[4],
+    lowci = ~ gmodels::ci(.x, confidence = confidence, na.rm = na_rm)[2],
+    hici = ~ gmodels::ci(.x, confidence = confidence, na.rm = na_rm)[3],
+    total_n = ~ n(),
+    n = ~ sum(!is.na(.x)),
+    na_n = ~ sum(is.na(.x))
   )
 
   d1 <- data %>%
@@ -40,7 +41,8 @@ summariser <- \(data, group_cols = NULL, digits = 2, incl_ci = T,
         dplyr::where(is.numeric),
         stats,
         .names = "{.col}-{.fn}"
-      )
+      ),
+      .groups = "drop"
     ) %>% 
     ungroup()
 
