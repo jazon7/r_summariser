@@ -1,25 +1,62 @@
-#install pacman package if not already installed
+# install pacman package if not already installed
 if (!require(pacman)) {
-
-install.packages("pacman")  
-
+  install.packages("pacman")
 }
 
-#load required packages with pacman p_load function
+# load required packages with pacman p_load function
 pacman::p_load(tidyverse, gmodels)
 
 
-#function to summarise data
-summariser <- \(data, group_cols = NULL, digits = 2, incl_ci = T, confidence = 0.95, na_rm = T, 
+#function to check if data is discrete
+check_discrete <- \(data, cutoff = 10){
+  discrete = vector()
+  
+  if (is.vector(data)) {
+    data <- na.omit(data)
+    discrete <- length(unique(data)) <= cutoff | is.factor(data)
+  }else{
+    warning("Unsure if grouping variable/s are discrete")
+  }
+  
+  return(discrete)
+}
+
+#function to check to see if grouping variables provided to summariser function are likely discrete. If not provide warning. 
+are_cols_discrete <- function(data, cols, i) {
+  
+  df <-
+    data %>% 
+    select(all_of(cols))
+  
+  discrete <- vector()
+  count = 1
+  for (i in df) {
+    discrete[count] <- check_discrete(i, cutoff = 10)
+    count = count + 1
+  }
+  
+  if(!all(discrete, na.rm = T)){
+    warning("The grouping variable/s you have selected may be of continuous type")
+  }
+}
+
+
+
+# function to summarise data
+summariser <- \(data, group_cols = NULL, digits = 2, incl_ci = T, confidence = 0.95, na_rm = T,
   incl_se = T,
   incl_min = T,
   incl_max = T,
   incl_med = F,
   incl_n_na = F,
-  ...)
-
-{
+  wide = T,
+  ...){
+  if (!is.data.frame(data)) {
+    stop("Input must be a dataframe")
+  }
   
+  are_cols_discrete(data, group_cols)
+
   stats <- list(
     mean = ~ mean(.x, na.rm = na_rm),
     median = ~ median(.x, na.rm = na_rm),
@@ -35,7 +72,7 @@ summariser <- \(data, group_cols = NULL, digits = 2, incl_ci = T, confidence = 0
   )
 
   d1 <- data %>%
-    group_by(across(all_of(group_cols))) %>% 
+    group_by(across(all_of(group_cols))) %>%
     dplyr::summarise(
       dplyr::across(
         dplyr::where(is.numeric),
@@ -43,7 +80,7 @@ summariser <- \(data, group_cols = NULL, digits = 2, incl_ci = T, confidence = 0
         .names = "{.col}-{.fn}"
       ),
       .groups = "drop"
-    ) %>% 
+    ) %>%
     ungroup()
 
   out <-
@@ -54,7 +91,8 @@ summariser <- \(data, group_cols = NULL, digits = 2, incl_ci = T, confidence = 0
       names_sep = "-",
       values_to = "value"
     ) %>%
-    mutate(value = round(value, digits)) 
+    mutate(value = round(value, digits)) %>%
+    mutate(across(all_of(group_cols), as_factor))
 
   if (incl_ci == F) {
     out <-
@@ -85,49 +123,23 @@ summariser <- \(data, group_cols = NULL, digits = 2, incl_ci = T, confidence = 0
       out %>%
       filter(!grepl("median", stat))
   }
-  
+
   if (incl_n_na == F) {
     out <-
       out %>%
       filter(!grepl("n_na", stat))
   }
-  
+
+  if(wide){
+    out <-
+      out %>%
+      pivot_wider(
+        names_from = stat,
+        values_from = value
+      ) %>%
+      arrange(var)
+  }
+
+
   return(out)
 }
-
-
-#test function
-
-test <-
-  summariser(data = mtcars,
-             group_cols = c("cyl"))
-
-test1 <- 
-  summariser(data = mtcars %>% select(cyl, mpg, hp), 
-             group_cols = c("cyl")
-             )
-
-
-#pivot wider
-test1 %>% 
-  pivot_wider(names_from = stat, values_from = value) %>% 
-  mutate(n_label = str_glue("n={n}"))
-
-test1 %>% 
-
-  pivot_wider(names_from = stat, values_from = value) %>% 
-  mutate(n_label = str_glue("n={n}")) %>% 
-  filter(var == 'mpg') %>%
-  ggplot(aes(x = as_factor(cyl), y = mean, fill = as_factor(cyl))) +
-  geom_bar(stat = 'identity') +
-  geom_errorbar(aes(ymin=lowci, ymax=hici), width=.2,
-                position=position_dodge(.9)) +
-  geom_text(aes(label = n_label),
-            nudge_y = -5 , nudge_x = -0
-  ) +
-  xlab("Cyl") +
-  ggpubr::theme_pubr() +
-  theme(legend.position = 'none')
-
-
-  
